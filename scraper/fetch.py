@@ -468,12 +468,23 @@ def auction_passed(sale_date_str):
 
 
 def too_soon_to_work(sale_date_str, threshold_days=5):
+    # 2026-09-30: was comparing raw datetimes instead of calendar dates --
+    # confirmed live this purged this county's ENTIRE 10/6/2026 auction wave
+    # (24 of 24 leads on that date) a full day early, on 9/30 while it was
+    # still 6 calendar days out, because time-of-day truncation made the
+    # raw timedelta come out to 5 days, tripping this <= 5 threshold
+    # prematurely. Same calendar-date-only fix already applied to
+    # auction_passed() above, ported here. purge_past_auctions() deletes
+    # these records outright, not just hides them -- this was destroying
+    # real, high-urgency leads, not a cosmetic display bug.
     if not sale_date_str:
         return False
     try:
+        from zoneinfo import ZoneInfo
         m, d, y = sale_date_str.strip().split("/")
-        dt = datetime(int(y), int(m), int(d))
-        days_until = (dt - TODAY.replace(tzinfo=None)).days
+        sale_dt = datetime(int(y), int(m), int(d)).date()
+        today_central = datetime.now(ZoneInfo("America/Chicago")).date()
+        days_until = (sale_dt - today_central).days
         return 0 <= days_until <= threshold_days
     except Exception:
         return False
